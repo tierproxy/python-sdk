@@ -1,0 +1,8 @@
+project_name_override: tierproxy_client
+package_name_override: tierproxy_client
+generate_sync: false
+generate_async: true
+use_pydantic_v2: true
+post_hooks:
+  - "ruff check --fix ."
+  - "ruff format ."

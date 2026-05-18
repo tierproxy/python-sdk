@@ -1,0 +1,30 @@
+name: sdk-python codegen
+on:
+  push:
+    branches: [main]
+    paths: ['openapi/tierproxy.v1.yaml']
+  workflow_dispatch:
+
+jobs:
+  regenerate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: bash scripts/generate.sh
+      - run: pip install -e .[dev]
+        working-directory: .
+      - run: pytest tests/unit -x
+        working-directory: .
+      - uses: peter-evans/create-pull-request@v6
+        with:
+          title: 'codegen: regenerate tierproxy SDK from openapi.yaml'
+          body: |
+            Automated PR triggered by openapi/tierproxy.v1.yaml change.
+            Review the diff in `src/tierproxy/_generated/`.
+          branch: codegen/sdk-python
+          labels: codegen

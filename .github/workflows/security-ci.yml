@@ -1,0 +1,27 @@
+# Public-only security CI: govulncheck + osv-scanner only.
+# ZAP baseline scans live on the PRIVATE gateway repo (where there's a server to scan).
+name: Security CI
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+jobs:
+  govulncheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+      - run: go install golang.org/x/vuln/cmd/govulncheck@latest
+      - run: govulncheck ./...
+
+  osv-scanner:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google/osv-scanner-action/osv-scanner-action@v1.9.2
+        with:
+          scan-args: "--recursive --skip-git ./"

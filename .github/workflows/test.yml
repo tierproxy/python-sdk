@@ -1,0 +1,46 @@
+name: sdk-python
+on:
+  pull_request:
+    paths: ['**', '.github/workflows/sdk-python.yml']
+  push:
+    branches: [main]
+    paths: ['**']
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        py: ["3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "${{ matrix.py }}" }
+      - run: pip install -e .[dev]
+        working-directory: .
+      - run: ruff check .
+        working-directory: .
+      - run: mypy src/tierproxy
+        working-directory: .
+      - run: pytest tests/unit tests/integration -v --cov=src/tierproxy --cov-fail-under=80
+        working-directory: .
+
+  lockfile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install pip-tools
+        run: pip install pip-tools
+      - name: Regenerate lock
+        working-directory: .
+        run: pip-compile --strip-extras --output-file=requirements.lock.new pyproject.toml
+      - name: Warn if lock is out of date
+        working-directory: .
+        run: |
+          if ! diff -u requirements.lock requirements.lock.new; then
+            echo "::warning::requirements.lock differs from regen — non-blocking. Regenerate locally if you want determinism:"
+            echo "  cd sdks/python && pipx run --spec pip-tools pip-compile --strip-extras --output-file=requirements.lock pyproject.toml"
+          fi

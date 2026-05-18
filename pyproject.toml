@@ -1,0 +1,115 @@
+[build-system]
+requires = ["hatchling>=1.21"]
+build-backend = "hatchling.build"
+
+[project]
+name = "tierproxy"
+description = "Official Python SDK for tierproxy — premium multi-provider proxy infrastructure for AI/ML pipelines."
+readme = "README.md"
+license = { text = "Apache-2.0" }
+requires-python = ">=3.10"
+authors = [{ name = "tierproxy", email = "ops@tierproxy.com" }]
+keywords = ["proxy", "scraping", "web-data", "ai", "llm", "langchain", "llamaindex", "crawl4ai"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: Apache Software License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Internet :: WWW/HTTP",
+]
+dynamic = ["version"]
+dependencies = [
+  "httpx == 0.28.1",
+  "pydantic == 2.13.4",
+  "httpx-sse == 0.4.3",
+]
+
+[project.optional-dependencies]
+requests = ["requests ~= 2.31"]
+mcp = ["mcp ~= 1.0"]
+otel = [
+  "opentelemetry-api>=1.27",
+  "opentelemetry-sdk>=1.27",
+  "opentelemetry-instrumentation-httpx>=0.48b0",
+  "opentelemetry-exporter-otlp>=1.27",
+]
+benchmarks = ["pytest-benchmark>=4.0"]
+dev = [
+  "pytest>=8.0",
+  "pytest-asyncio>=0.23",
+  "pytest-httpx>=0.30",
+  "pytest-cov>=4.1",
+  "ruff>=0.5",
+  "mypy>=1.10",
+  "openapi-python-client>=0.20",
+]
+docs = [
+  "sphinx>=7.3",
+  "myst-parser>=3.0",
+  "furo>=2024.5",
+  "sphinx-copybutton>=0.5",
+  "sphinx-design>=0.6",
+  "sphinx-tabs>=3.4",
+  "sphinx-sitemap>=2.6",
+  "sphinx-autobuild>=2024.4",
+]
+
+[project.urls]
+Homepage = "https://github.com/tierproxy/python-sdk"
+Repository = "https://github.com/tierproxy/python-sdk"
+
+[project.scripts]
+tierproxy = "tierproxy._cli:main"
+tierproxy-mcp = "tierproxy.mcp.server:main"
+
+[tool.hatch.version]
+path = "src/tierproxy/_version.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tierproxy"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/tierproxy/py.typed" = "tierproxy/py.typed"
+"NOTICE" = "tierproxy/NOTICE"
+"LICENSE" = "tierproxy/LICENSE"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP", "B", "A", "C4", "T20", "RET", "SIM"]
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"src/tierproxy/_cli.py" = ["T201"]
+"examples/*.py" = ["T201"]
+"tests/unit/test_cli.py" = ["T201"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+warn_return_any = true
+disallow_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = ["mcp.*", "opentelemetry.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["tierproxy.mcp.server"]
+disable_error_code = ["misc", "no-untyped-call", "unused-ignore"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+markers = [
+  "integration: requires mock server",
+  "e2e: requires running gateway",
+  "requires_real_gateway: e2e against a live gateway; needs TIERPROXY_API_KEY",
+  "mocked_e2e: e2e against the mock gateway fixture (always runnable)",
+]

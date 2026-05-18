@@ -1,0 +1,22 @@
+name: brand-leak-gate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Grep for forbidden patterns
+        run: |
+          set -euo pipefail
+          PATTERN='elasbit|Alexei|Zubizarreta|Maikel|Cruz|azubizarreta@|mcruz@'
+          # Exclude this file itself: it contains the patterns as grep input,
+          # not as actual leaked PII.
+          if grep -riE "$PATTERN" --exclude-dir=.git --exclude='brand-leak-gate.yml' .; then
+            echo "::error::Brand leak detected. Reject this PR or fix the rewrite rules upstream."
+            exit 1
+          fi

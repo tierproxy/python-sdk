@@ -1,0 +1,46 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.tierproxy/python-sdk",
+  "title": "tierproxy",
+  "description": "Multi-provider proxy infrastructure for AI/ML. Geo, sessions, cost-aware routing, usage tools.",
+  "repository": {
+    "url": "https://github.com/tierproxy/python-sdk",
+    "source": "github"
+  },
+  "websiteUrl": "https://tierproxy.com",
+  "version": "0.1.1",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "tierproxy",
+      "version": "0.1.1",
+      "transport": {
+        "type": "stdio"
+      },
+      "runtimeHint": "pipx",
+      "runtimeArguments": [
+        {
+          "type": "named",
+          "name": "--spec",
+          "value": "tierproxy[mcp]",
+          "isRequired": true
+        }
+      ],
+      "packageArguments": [
+        {
+          "type": "positional",
+          "value": "tierproxy-mcp",
+          "isRequired": true
+        }
+      ],
+      "environmentVariables": [
+        {
+          "name": "TIERPROXY_API_KEY",
+          "description": "tierproxy API key (tp_live_... or tp_test_...). Sign up at https://tierproxy.com.",
+          "isRequired": true,
+          "isSecret": true
+        }
+      ]
+    }
+  ]
+}

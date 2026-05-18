@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: SDK questions / discussion
+    url: https://github.com/tierproxy/python-sdk/discussions
+    about: Use Discussions for usage questions and design feedback.
+  - name: Service / API support (paid plans)
+    url: mailto:support@tierproxy.com
+    about: Customer support for the proxy service.

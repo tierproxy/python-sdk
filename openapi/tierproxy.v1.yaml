@@ -1,0 +1,218 @@
+openapi: 3.1.0
+info:
+  title: tierproxy public API
+  version: 1.1.0
+  summary: Read-only client-self-service API for tierproxy
+  description: |
+    Authenticated REST endpoints that let a client query its own account,
+    usage history, and live upstream health. Pair with the proxy traffic
+    listener on :443 (HTTP CONNECT) / :1080 (SOCKS5) for actual proxy use.
+  license: { name: MIT }
+  contact: { name: tierproxy, url: https://github.com/tierproxy/python-sdk }
+servers:
+  - url: https://gw.tierproxy.com:8444
+    description: Production
+  - url: https://localhost:8444
+    description: Local dev (self-signed TLS)
+security:
+  - bearerAuth: []
+paths:
+  /v1/me:
+    get:
+      operationId: getMe
+      summary: Caller identity + quota
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Me" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /v1/usage/me:
+    get:
+      operationId: getUsage
+      summary: Daily usage buckets + cost
+      parameters:
+        - { name: from, in: query, schema: { type: string, format: date }, description: "Inclusive start date YYYY-MM-DD. Defaults to first of current month." }
+        - { name: to,   in: query, schema: { type: string, format: date }, description: "Inclusive end date YYYY-MM-DD. Defaults to today." }
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Usage" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /v1/usage/me/stream:
+    get:
+      operationId: streamUsage
+      summary: Live usage stream (Server-Sent Events)
+      description: |
+        Returns text/event-stream. Emits one `usage_delta` event every 5 s with
+        the current month-to-date total bytes and the delta since last event.
+        Closes after 1 h or on client disconnect.
+      responses:
+        "200":
+          description: SSE stream
+          content:
+            text/event-stream:
+              schema: { type: string }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /v1/health/upstreams:
+    get:
+      operationId: getHealthUpstreams
+      summary: Live upstream RED metrics
+      description: |
+        Sanitized view of every upstream the caller is allowed to use, with
+        request-rate, error-rate, and p95 latency (RED method) + cost/GB.
+        Use this from the SDK to implement client-side smart routing.
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  upstreams:
+                    type: array
+                    items: { $ref: "#/components/schemas/UpstreamHealth" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /v1/usage/recent:
+    get:
+      operationId: getUsageRecent
+      summary: Recent per-tunnel cost attribution
+      description: |
+        Returns up to the last 100 completed CONNECT tunnels for the caller,
+        each annotated with upstream id, target host, byte counters, duration,
+        and estimated USD cost. In-memory ring buffer reset on gateway restart.
+        Use this to lazily attribute per-request cost on the SDK side without
+        polling DDB per request.
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UsageRecent" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /v1/rate-limits/me:
+    get:
+      operationId: getRateLimitsMe
+      summary: Per-domain conservative req/s suggestions from observed 429s
+      description: |
+        Returns a per-domain suggested requests-per-second value derived from
+        client-self-reported 429s in the sliding window (default 1h). Clients
+        report 429s via the `X-TierProxy-Report-429: <domain>[,<domain>...]`
+        header on the next CONNECT request after they get rate-limited.
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RateLimits" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: "TierProxy API key (tp_live_*)"
+  schemas:
+    Me:
+      type: object
+      required: [client_id, plan_id, status, quota_bytes_month, used_bytes_month, allowed_upstreams]
+      properties:
+        client_id:          { type: string }
+        plan_id:            { type: string }
+        status:             { type: string, enum: [active, suspended] }
+        quota_bytes_month:  { type: integer, format: int64 }
+        used_bytes_month:   { type: integer, format: int64 }
+        allowed_upstreams:  { type: array, items: { type: string } }
+        rate_per_sec:       { type: number }
+        bytes_per_sec:      { type: number }
+    UsageDay:
+      type: object
+      required: [date, bytes_up, bytes_down, cost_usd]
+      properties:
+        date:       { type: string, format: date }
+        bytes_up:   { type: integer, format: int64 }
+        bytes_down: { type: integer, format: int64 }
+        cost_usd:   { type: number }
+    Usage:
+      type: object
+      required: [client_id, from, to, days, total_bytes, total_cost_usd]
+      properties:
+        client_id:       { type: string }
+        from:            { type: string, format: date }
+        to:              { type: string, format: date }
+        days:            { type: array, items: { $ref: "#/components/schemas/UsageDay" } }
+        total_bytes:     { type: integer, format: int64 }
+        total_cost_usd:  { type: number }
+    UpstreamHealth:
+      type: object
+      required: [upstream_id, state, cb_state, success_rate, latency_p95_ms, cost_per_gb_usd]
+      properties:
+        upstream_id:     { type: string }
+        state:           { type: string, enum: [green, yellow, red] }
+        cb_state:        { type: string, enum: [closed, half_open, open] }
+        success_rate:    { type: number, minimum: 0, maximum: 1 }
+        latency_p95_ms:  { type: integer, format: int64 }
+        cost_per_gb_usd: { type: number }
+    Tunnel:
+      type: object
+      required: [client_id, upstream_id, target_host, bytes_up, bytes_down, cost_usd, duration_ms, timestamp, status_code]
+      properties:
+        client_id:   { type: string }
+        upstream_id: { type: string }
+        target_host: { type: string }
+        bytes_up:    { type: integer, format: int64 }
+        bytes_down:  { type: integer, format: int64 }
+        cost_usd:    { type: number }
+        duration_ms: { type: integer, format: int64 }
+        timestamp:   { type: string, format: date-time }
+        status_code: { type: integer }
+    UsageRecent:
+      type: object
+      required: [tunnels, ts]
+      properties:
+        tunnels: { type: array, items: { $ref: "#/components/schemas/Tunnel" } }
+        ts:      { type: string, format: date-time }
+    RateLimitSuggestion:
+      type: object
+      required: [domain, suggest_per_sec]
+      properties:
+        domain:          { type: string }
+        suggest_per_sec: { type: number }
+    RateLimits:
+      type: object
+      required: [suggestions, window_secs]
+      properties:
+        suggestions: { type: array, items: { $ref: "#/components/schemas/RateLimitSuggestion" } }
+        window_secs: { type: integer }
+    Problem:
+      type: object
+      required: [type, title, status, request_id]
+      properties:
+        type:       { type: string }
+        title:      { type: string }
+        detail:     { type: string }
+        status:     { type: integer }
+        request_id: { type: string }
+  responses:
+    Unauthorized:
+      description: Missing or invalid API key
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    BadRequest:
+      description: Validation failure
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }

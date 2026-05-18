@@ -1,0 +1,20 @@
+name: OpenAPI lint
+on:
+  pull_request:
+    paths: ['openapi/**']
+  push:
+    branches: [main]
+    paths: ['openapi/**']
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: pipx install openapi-spec-validator
+      - run: openapi-spec-validator openapi/tierproxy.v1.yaml
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      - run: npm install -g @redocly/cli
+      - run: redocly lint openapi/tierproxy.v1.yaml

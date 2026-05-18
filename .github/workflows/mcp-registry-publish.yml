@@ -1,0 +1,58 @@
+name: Publish to MCP Registry
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version (e.g. 0.3.1) when running via dispatch on a non-release ref'
+        required: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # need full history for git describe --tags
+
+      - name: Install mcp-publisher
+        run: |
+          OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+          ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
+          curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_${OS}_${ARCH}.tar.gz" \
+            | tar xz mcp-publisher
+
+      - name: Sync server.json version with git tag
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == "release" ]]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          elif [[ -n "${INPUTS_VERSION:-}" ]]; then
+            VERSION="$INPUTS_VERSION"
+          else
+            VERSION=$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//')
+          fi
+          if [[ -z "$VERSION" ]]; then
+            echo "::error::No tag found and no version input; cannot determine version."
+            exit 1
+          fi
+          echo "Publishing version: $VERSION"
+          jq --arg v "$VERSION" '.version = $v | .packages[0].version = $v' \
+             server.json > server.tmp
+          mv server.tmp server.json
+          cat server.json | jq '.version, .packages[0].version'
+        env:
+          INPUTS_VERSION: ${{ inputs.version || '' }}
+
+      - name: Authenticate (GitHub OIDC)
+        run: $GITHUB_WORKSPACE/mcp-publisher login github-oidc
+        working-directory: .
+
+      - name: Publish to MCP Registry
+        run: $GITHUB_WORKSPACE/mcp-publisher publish
+        working-directory: .
