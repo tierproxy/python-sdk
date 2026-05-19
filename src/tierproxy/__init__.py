@@ -1,5 +1,29 @@
+"""TierProxy tierproxy Python SDK.
+
+Quickstart
+----------
+
+Construct a client (uses ``TIERPROXY_API_KEY`` env var when no key is passed)::
+
+    from tierproxy import TierProxy
+
+    with TierProxy() as g:
+        me = g.me.get()
+        resp = g.get("https://httpbin.org/ip", country="US")
+
+Async variant::
+
+    from tierproxy import AsyncTierProxy
+
+    async with AsyncTierProxy() as g:
+        me = await g.me.get()
+
+See https://python.tierproxy.com for the full guide.
+"""
+
 from typing import Any
 
+from tierproxy import schemas as schemas
 from tierproxy._module_api import get, post, request, reset_default_client, session
 from tierproxy._version import __version__
 from tierproxy.async_client import AsyncTierProxy
@@ -56,5 +80,6 @@ __all__ = [
     "post",
     "request",
     "reset_default_client",
+    "schemas",
     "session",
 ]

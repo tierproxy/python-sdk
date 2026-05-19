@@ -83,6 +83,48 @@ p = ProxyURL(api_key="tp_live_...", country="US", mode="username_encoding")
 print(p.http_url())  # http://customer-tp_live_...-cc-US:x@gw.tierproxy.com:443
 ```
 
+## Error handling
+
+Every SDK error inherits from `tierproxy.TierProxyError` and carries a
+`request_id` for support escalation:
+
+```python
+from tierproxy import TierProxy, RateLimitError
+import time
+
+with TierProxy() as g:
+    try:
+        resp = g.get("https://example.com/page")
+    except RateLimitError as e:
+        time.sleep(e.retry_after or 5)
+        resp = g.get("https://example.com/page")
+```
+
+See [Errors reference](https://python.tierproxy.com/errors.html) for the
+full HTTP-status-to-exception mapping.
+
+## AI agent integration
+
+The SDK exposes its response models as JSON Schema and as pre-built tool
+definitions for Anthropic Claude and OpenAI function-calling:
+
+```python
+import anthropic
+from tierproxy import TierProxy, schemas
+
+with TierProxy() as gw:
+    anthropic.Anthropic().messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=1024,
+        tools=schemas.anthropic_tools(),
+        messages=[{"role": "user", "content": "How much quota is left?"}],
+    )
+```
+
+See the [AI integration guide](https://python.tierproxy.com/ai-integration.html)
+and the MCP server in
+[`examples/mcp_claude_desktop.md`](examples/mcp_claude_desktop.md).
+
 ## How tierproxy compares
 
 | | tierproxy | Smartproxy SDK | Bright Data SDK | Oxylabs SDK | DataImpulse |

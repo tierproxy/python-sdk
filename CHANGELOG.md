@@ -1,4 +1,33 @@
 # Changelog
+## [0.4.0] - Unreleased
+
+### Added
+- Per-field descriptions on every Pydantic model (`Me`, `Usage`, `UsageDay`,
+  `UsageDelta`, `UpstreamHealth`, `RateLimits`, `RateLimitSuggestion`,
+  `Tunnel`, `UsageRecent`). Visible in IDE hover, OpenAPI export, and JSON
+  Schema export.
+- Google-style docstrings with Args/Returns/Raises/Example on `TierProxy`,
+  `AsyncTierProxy`, `RetryPolicy`, `ProxyURL`, every resource class, and the
+  module-level convenience API (`tierproxy.get`, `.post`, `.request`,
+  `.session`).
+- Remedy-oriented docstrings on every exception subclass; new
+  `docs/errors.md` canonical mapping page.
+- New `tierproxy.schemas` module: JSON Schema export per model
+  (`tierproxy.schemas.json_schema('Me')`) and pre-built tool definitions for
+  Anthropic + OpenAI function-calling (`tierproxy.schemas.anthropic_tools()`,
+  `.openai_tools()`).
+- New documentation pages: `errors.md`, `codegen.md`, `ai-integration.md`.
+- `security.md` linked from the docs toctree (previously orphaned).
+- Two new examples under `examples/`: `ai_tool_use_claude.py`,
+  `ai_tool_use_openai.py`.
+
+### Changed
+- Examples now consistently use `if __name__ == "__main__": main()` so
+  importing them does not trigger network calls.
+
+### Fixed
+- Sphinx no longer warns about an unreferenced `security.md` document.
+
 ## [0.3.0] — Security hardening
 
 ### BREAKING CHANGES
@@ -70,3 +99,9 @@
 - `ProxyURL` builder (header mode + username-encoding mode)
 - Client-side cost-aware smart selector
 - LangChain, LlamaIndex, Crawl4AI, Playwright examples
+
+[Unreleased]: https://github.com/tierproxy/python-sdk/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/tierproxy/python-sdk/compare/v0.3.0...v0.4.0
+[0.3.0]: https://github.com/tierproxy/python-sdk/compare/v0.2.0...v0.3.0
+[0.2.0]: https://github.com/tierproxy/python-sdk/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/tierproxy/python-sdk/releases/tag/v0.1.0

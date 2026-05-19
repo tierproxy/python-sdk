@@ -13,6 +13,7 @@ adapters for the most popular Python HTTP clients and scraping frameworks.
 quickstart
 levels
 cookbook
+errors
 caching
 cost-tracking
 failover
@@ -20,6 +21,9 @@ rate-limit-learning
 tls-fingerprint
 cookies-streaming
 observability
+ai-integration
+codegen
+security
 comparison
 faq
 migration
