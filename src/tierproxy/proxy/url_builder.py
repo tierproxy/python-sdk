@@ -25,6 +25,60 @@ def _q(s: str) -> str:
 
 @dataclass
 class ProxyURL:
+    """Parsed proxy URL with optional authentication and targeting parameters.
+
+    Represents a single gateway connection endpoint together with the
+    credentials and targeting modifiers needed to route a request through
+    tierproxy.
+
+    Two credential-encoding modes are supported:
+
+    ``"headers"`` (default)
+        The ``api_key`` is sent as the proxy username and targeting parameters
+        are encoded as ``X-Proxy-*`` headers (e.g. ``X-Proxy-Geo``,
+        ``X-Proxy-Session``). Use this for HTTP CONNECT proxies that parse
+        ``Proxy-Authorization`` and custom headers — httpx and requests both
+        work well in this mode.
+
+    ``"username_encoding"``
+        All targeting modifiers are embedded directly in the username field
+        using a ``customer-<key>-<modifier>-<value>-...`` convention
+        (Smartproxy-compatible style). Use this for tooling such as Playwright
+        or Selenium that only accepts a proxy as a plain URL string and has no
+        mechanism to inject per-request headers.
+
+    Targeting fields:
+
+    - ``country``: ISO 3166-1 alpha-2 exit-country code (e.g. ``"US"``).
+    - ``city``: City name hint for geo-targeting (1–64 chars).
+    - ``session_id``: Sticky-session identifier (alphanumeric or ``-_``,
+      1–64 chars). Requests sharing the same ``session_id`` are pinned to the
+      same residential IP for the duration of the session.
+    - ``session_duration_minutes``: How long to hold the sticky session
+      (1–1440 minutes).
+    - ``upstream_hint``: Preferred upstream provider identifier (e.g.
+      ``"decodo"``). The gateway will try this upstream first.
+    - ``pool``: Proxy pool type — ``"residential"``, ``"datacenter"``,
+      ``"isp"``, or ``"mobile"``. Defaults to residential when None.
+
+    Example::
+
+        from tierproxy.proxy.url_builder import ProxyURL
+
+        p = ProxyURL(api_key="tp_live_abc123", host="gw.example.com", port_https=443)
+        print(p.http_url())
+        # http://tp_live_abc123:x@gw.example.com:443
+
+        p2 = ProxyURL(
+            api_key="tp_live_abc123",
+            host="gw.example.com",
+            country="DE",
+            session_id="job-42",
+        )
+        print(p2.headers())
+        # {'X-Proxy-Geo': 'DE', 'X-Proxy-Session': 'job-42'}
+    """
+
     api_key: str
     password: str = ""
     pool: Pool | None = None
@@ -77,10 +131,12 @@ class ProxyURL:
         return f"http://{user}:{self.password or 'x'}@{self.host}:{self.port_https}"
 
     def socks5_url(self) -> str:
+        """``socks5://user:pass@host:port`` for SOCKS5 proxy clients."""
         user = self.encoded_username() if self.mode == "username_encoding" else self.api_key
         return f"socks5://{user}:{self.password or 'x'}@{self.host}:{self.port_socks5}"
 
     def _validate(self) -> None:
+        """Raise ValueError if any field fails its invariant check."""
         if not self.api_key:
             raise ValueError("api_key required")
         if self.country is not None and not (

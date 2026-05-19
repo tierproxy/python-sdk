@@ -24,6 +24,19 @@ if TYPE_CHECKING:
 
 
 class AsyncTierProxy:
+    """Asynchronous client for the tierproxy public REST API.
+
+    Use as an async context manager::
+
+        async with AsyncTierProxy() as client:
+            me = await client.me.get()
+            resp = await client.get("https://example.com/scrape")
+
+    Prefer this over :class:`TierProxy` for high-throughput workloads where many
+    requests can be in-flight concurrently. Args identical to :class:`TierProxy`
+    — see that class's docstring for the full kwarg reference.
+    """
+
     def __init__(
         self,
         api_key: str | None = None,
@@ -44,6 +57,7 @@ class AsyncTierProxy:
         auto_failover_max_attempts: int = 3,
         allow_insecure: bool = False,
     ) -> None:
+        """Construct the async client. See :class:`AsyncTierProxy` for argument documentation."""
         key = api_key if api_key is not None else os.environ.get("TIERPROXY_API_KEY")
         if key is None:
             raise AuthenticationError("No api_key passed and TIERPROXY_API_KEY env var not set")
@@ -94,39 +108,56 @@ class AsyncTierProxy:
 
     @property
     def me(self) -> AsyncMeResource:
+        """Lazy accessor for the Me resource."""
         if self._me is None:
             self._me = AsyncMeResource(self)
         return self._me
 
     @property
     def usage(self) -> AsyncUsageResource:
+        """Lazy accessor for the Usage resource."""
         if self._usage is None:
             self._usage = AsyncUsageResource(self)
         return self._usage
 
     @property
     def health(self) -> AsyncHealthResource:
+        """Lazy accessor for the Health resource."""
         if self._health is None:
             self._health = AsyncHealthResource(self)
         return self._health
 
     @property
     def usage_recent(self) -> AsyncUsageRecentResource:
+        """Lazy accessor for the UsageRecent resource."""
         if self._usage_recent is None:
             self._usage_recent = AsyncUsageRecentResource(self)
         return self._usage_recent
 
     @property
     def rate_limits(self) -> AsyncRateLimitsResource:
+        """Lazy accessor for the RateLimits resource."""
         if self._rate_limits is None:
             self._rate_limits = AsyncRateLimitsResource(self)
         return self._rate_limits
 
     @property
     def cookies(self) -> CookieJar:
+        """Lazy accessor for the per-session cookie jar."""
         return self._cookie_jar
 
     async def cost_for(self, resp: httpx.Response) -> float | None:
+        """Return the USD cost attributed to a proxied response.
+
+        Args:
+            resp: An ``httpx.Response`` previously returned by
+                :meth:`request`, :meth:`get`, or :meth:`post`.
+
+        Returns:
+            Estimated cost in USD, or None if cost data is unavailable for
+            this response (e.g. the response came from cache or the upstream
+            cost table has not loaded yet).
+        """
         if self._cost_attributor is None:
             from tierproxy._internal.cost import AsyncCostAttributor
 
@@ -134,6 +165,16 @@ class AsyncTierProxy:
         return await self._cost_attributor.cost_for(resp)
 
     async def upstream_for(self, resp: httpx.Response) -> str | None:
+        """Return the upstream ID that served a proxied response.
+
+        Args:
+            resp: An ``httpx.Response`` previously returned by
+                :meth:`request`, :meth:`get`, or :meth:`post`.
+
+        Returns:
+            Upstream identifier string (e.g. ``"decodo"``), or None if the
+            upstream cannot be determined from the response.
+        """
         if self._cost_attributor is None:
             from tierproxy._internal.cost import AsyncCostAttributor
 
@@ -141,21 +182,46 @@ class AsyncTierProxy:
         return await self._cost_attributor.upstream_for(resp)
 
     async def close(self) -> None:
+        """Close the underlying httpx async client. Called automatically by ``__aexit__``."""
         client = self._transport._client
         if isinstance(client, httpx.AsyncClient):
             await client.aclose()
 
     async def __aenter__(self) -> AsyncTierProxy:
+        """Enter the async context manager, returning this client instance."""
         return self
 
     async def __aexit__(self, *_: Any) -> None:
+        """Exit the async context manager, closing the underlying httpx client."""
         await self.close()
 
     # -------- Level 1-2: proxy-through helpers --------
 
     async def request(self, method: str, url: str, **kwargs: Any) -> Any:
-        """Async request. With ``stream=True``, returns an async context manager
+        """Make an async HTTP request *through* the tierproxy gateway.
+
+        Semantics are identical to :meth:`TierProxy.request` — see that
+        method's docstring for the full parameter and behavior reference.
+
+        When ``stream=True`` is passed, returns an async context manager
         yielding an ``httpx.Response`` for streaming.
+
+        Args:
+            method: HTTP verb (e.g. ``"GET"``, ``"POST"``).
+            url: Full URL of the target resource.
+            **kwargs: Targeting kwargs and httpx passthrough kwargs.
+
+        Returns:
+            ``httpx.Response`` for normal requests. When ``stream=True``, an
+            async context manager that yields ``httpx.Response``.
+
+        Raises:
+            AuthenticationError: API key rejected by the gateway.
+            RateLimitError: Gateway returned 429.
+            ServerError: Gateway or upstream returned 5xx.
+            TierProxyError: Any other error originating from the gateway.
+            httpx.TimeoutException: Request exceeded ``http_timeout``.
+            httpx.NetworkError: Transport-level failure contacting the gateway.
         """
         if is_stream(kwargs):
             return self._stream_request(method, url, **kwargs)
@@ -277,12 +343,31 @@ class AsyncTierProxy:
         )
 
     async def get(self, url: str, **kwargs: Any) -> Any:
+        """Make an async GET request through the gateway. Delegates to :meth:`request`."""
         return await self.request("GET", url, **kwargs)
 
     async def post(self, url: str, **kwargs: Any) -> Any:
+        """Make an async POST request through the gateway. Delegates to :meth:`request`."""
         return await self.request("POST", url, **kwargs)
 
     def session(self, **targeting_kwargs: Any) -> httpx.AsyncClient:
+        """Return an ``httpx.AsyncClient`` preconfigured to route through the gateway.
+
+        Useful when the caller wants to make many requests with the same
+        targeting without rebuilding the proxy on every call. The returned
+        client is not managed by this ``AsyncTierProxy`` instance — the caller
+        is responsible for closing it.
+
+        Args:
+            **targeting_kwargs: Targeting parameters baked into the proxy URL
+                for every request made with the returned client. Supported
+                keys: ``country``, ``state``, ``city``, ``session_id``,
+                ``ttl``, ``upstream_hint``, ``pool``.
+
+        Returns:
+            A configured ``httpx.AsyncClient`` with the proxy and headers set.
+            Use as an async context manager or call ``await .aclose()`` when done.
+        """
         from tierproxy._targeting import build_proxy
 
         host = httpx.URL(self._transport.base_url).host
@@ -294,6 +379,16 @@ class AsyncTierProxy:
         )
 
     def target(self, **kwargs: Any) -> AsyncTargetedRequest:
+        """Builder pattern: capture targeting kwargs and return an async request helper.
+
+        Args:
+            **kwargs: Targeting parameters forwarded to every subsequent
+                request. Same keys as :meth:`request`.
+
+        Returns:
+            An :class:`AsyncTargetedRequest` bound to this client and the
+            given targeting kwargs.
+        """
         return AsyncTargetedRequest(self, kwargs)
 
     # -------- Level 3: cost guard --------
@@ -314,15 +409,57 @@ class AsyncTierProxy:
 
 
 class AsyncTargetedRequest:
+    """One-shot async helper that captures targeting kwargs and forwards to the client.
+
+    Returned by :meth:`AsyncTierProxy.target`. Holds a reference to the parent
+    async client and a fixed set of targeting parameters merged into every
+    subsequent request.
+
+    Args:
+        client: The :class:`AsyncTierProxy` instance that will execute requests.
+        targeting: Targeting kwargs captured from :meth:`AsyncTierProxy.target`.
+    """
+
     def __init__(self, client: AsyncTierProxy, targeting: dict[str, Any]) -> None:
         self._client = client
         self._targeting = targeting
 
     async def get(self, url: str, **kw: Any) -> Any:
+        """Make an async GET request with the captured targeting merged in.
+
+        Args:
+            url: Target URL.
+            **kw: Additional kwargs forwarded to :meth:`AsyncTierProxy.request`;
+                override captured targeting on conflict.
+
+        Returns:
+            ``httpx.Response`` or an async stream context manager if ``stream=True``.
+        """
         return await self._client.get(url, **{**self._targeting, **kw})
 
     async def post(self, url: str, **kw: Any) -> Any:
+        """Make an async POST request with the captured targeting merged in.
+
+        Args:
+            url: Target URL.
+            **kw: Additional kwargs forwarded to :meth:`AsyncTierProxy.request`;
+                override captured targeting on conflict.
+
+        Returns:
+            ``httpx.Response`` or an async stream context manager if ``stream=True``.
+        """
         return await self._client.post(url, **{**self._targeting, **kw})
 
     async def request(self, method: str, url: str, **kw: Any) -> Any:
+        """Make an async request with the given method and the captured targeting merged in.
+
+        Args:
+            method: HTTP verb (e.g. ``"GET"``, ``"POST"``).
+            url: Target URL.
+            **kw: Additional kwargs forwarded to :meth:`AsyncTierProxy.request`;
+                override captured targeting on conflict.
+
+        Returns:
+            ``httpx.Response`` or an async stream context manager if ``stream=True``.
+        """
         return await self._client.request(method, url, **{**self._targeting, **kw})
